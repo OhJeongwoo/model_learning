@@ -35,7 +35,7 @@ for sigma in PATH_SIGMA:
             transform trajectory
             '''
             x,y = polar2xy(x_,post_mean) 
-            y = y +1
+            y = y +2
             for vel in vel_types:
                 filter_index = np.asarray([int(i*vel) for i in range(int(100/vel))])
                 x_1 = x[filter_index]
@@ -56,12 +56,12 @@ visualizing some trajectories
 '''
 
 plt.figure(figsize=(15,10))
-plt.xlim((-3,3))
-plt.ylim((-3,3))
+plt.xlim((-4,4))
+plt.ylim((-4,4))
 for key in saver.logs:
     if key>300:
         break
-    if saver.logs[key]['type']==1 and saver.logs[key]['vel']==1:
+    if saver.logs[key]['vel']==1: #saver.logs[key]['type']==1 
         (x,y) = saver.logs[key]['states']
         config = saver.configs[key]
         plt.plot(x,y,marker='o',linewidth=1, markersize=2,label = 'lengthscale:{}, sigma: {} , anchor_num:{}'.format(config['lengthscale'],config['sigma'],config['anchor_num']))

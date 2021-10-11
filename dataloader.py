@@ -56,6 +56,10 @@ class synthetic_example(data.Dataset):
         x = self.x[index]
         y = self.y[index]
         return x,y
+    
+    def __len__(self):
+        return self.x.size()[0]
 
 if __name__ == '__main__':
     temp = synthetic_example()
+    print(temp.__len__())
