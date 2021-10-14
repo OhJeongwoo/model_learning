@@ -35,7 +35,7 @@ for sigma in PATH_SIGMA:
             transform trajectory
             '''
             x,y = polar2xy(x_,post_mean) 
-            y = y +2
+            y = y +1
             for vel in vel_types:
                 filter_index = np.asarray([int(i*vel) for i in range(int(100/vel))])
                 x_1 = x[filter_index]
