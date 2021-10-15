@@ -19,10 +19,10 @@ class synthetic_example(data.Dataset):
         for key in data:
             states = torch.FloatTensor(data[key]['states']).T # [N * 2]
             actions = torch.FloatTensor(data[key]['actions']).T
-            new_states = states[:-num_traj]
+            new_states = states[:-num_traj-1]
             new_actions = actions[:-num_traj]
             for j in range(1,num_traj):
-                new_states = torch.cat((new_states,states[j:j-num_traj]),dim=1)
+                new_states = torch.cat((new_states,states[j:j-num_traj-1]),dim=1)
                 new_actions = torch.cat((new_actions,actions[j:j-num_traj]),dim=1)
             size = new_states.size()[0]
             vel = [data[key]['vel']]*size
