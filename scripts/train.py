@@ -60,20 +60,21 @@ if __name__ == "__main__":
     n_consecutive_frame_ = args['n_consecutive_frame']
     n_same_traj_samples_ = args['n_same_traj_samples']
     n_diff_traj_samples_ = args['n_diff_traj_samples']
+    n_samples_ = args['n_samples']
 
     dataset = Dataloader(data_path, n_trj_, is_sequence_, n_consecutive_frame_)
     state_dim_ = dataset.state_dim
     action_dim_ = dataset.action_dim
     n_batches_ = int(dataset.n_data / batch_size_)
 
-    encoder = Encoder(state_dim = state_dim_, action_dim = action_dim_, hidden_layers = encoder_hidden_layers_, latent_dim = latent_dim_, learning_rate = encoder_learning_rate_, is_deterministic = is_deterministic_)
+    encoder = Encoder(state_dim = state_dim_, action_dim = action_dim_, hidden_layers = encoder_hidden_layers_, latent_dim = latent_dim_, learning_rate = encoder_learning_rate_, is_deterministic = is_deterministic_, n_samples = n_samples_)
     policy = MDN(state_dim = state_dim_, action_dim = action_dim_, hidden_layers = mdn_hidden_layers_, latent_dim = latent_dim_, K = K_, learning_rate = policy_learning_rate_)
     
 
-    encoder_loss = 0.0
-    distance_loss = 0.0
-    regularizer_loss = 0.0
-    policy_loss = 0.0
+    record_encoder_loss = 0.0
+    record_distance_loss = 0.0
+    record_regularizer_loss = 0.0
+    record_policy_loss = 0.0
     for i_epoch in range(n_epoch_):
         for i in range(n_batches_):
             # update encoder
@@ -103,7 +104,11 @@ if __name__ == "__main__":
                 dist = encoder.hellinger_distance(P_mu, Q_mu, P_sigma, Q_sigma)
 
             distance_loss = torch.mean(cls_dir * dist)
-            regularizer_loss = encoder.regularization_loss(P_mu, P_sigma) + encoder.regularization_loss(Q_mu, Q_sigma)
+            record_distance_loss = distance_loss.item()
+            
+            if not is_deterministic_:
+                regularizer_loss = encoder.regularization_loss(P_mu, P_sigma) + encoder.regularization_loss(Q_mu, Q_sigma)
+                record_regularizer_loss = regularizer_loss.item()
 
             #### mdn loss
             if is_deterministic_:
@@ -127,9 +132,14 @@ if __name__ == "__main__":
 
 
             policy_loss = policy.mdn_loss(out_P_pi, out_P_mu, out_P_sigma, P_act) + policy.mdn_loss(out_Q_pi, out_Q_mu, out_Q_sigma, Q_act)
-            encoder_loss = distance_loss + regularizer_loss
-
-            loss = distance_loss + regularizer_loss + policy_loss
+            record_policy_loss = policy_loss.item()
+            encoder_loss = distance_loss
+            if not is_deterministic_:
+                encoder_loss += regularizer_loss
+            record_encoder_loss = encoder_loss.item()
+            loss = encoder_loss + policy_loss
+            
+                
             loss.backward()
             encoder.optimizer.step()
             policy.optimizer.step()
@@ -166,7 +176,7 @@ if __name__ == "__main__":
 
         end_time = time.time()
         if i_epoch % 10 == 0:
-            print("[%04d-th Epoch, %.2lf] encoder loss: %.4f, distance loss: %.4f, regularizer loss: %.4f, policy loss: %.4f" %(i_epoch, end_time - start_time, encoder_loss, distance_loss, regularizer_loss, policy_loss))
+            print("[%04d-th Epoch, %.2lf] encoder loss: %.4f, distance loss: %.4f, regularizer loss: %.4f, policy loss: %.4f" %(i_epoch, end_time - start_time, record_encoder_loss, record_distance_loss, record_regularizer_loss, record_policy_loss))
         
         # evaluation
 
@@ -194,7 +204,7 @@ if __name__ == "__main__":
             dist = encoder.hellinger_distance(P_mu, Q_mu, None, None)
         else :
             dist = encoder.hellinger_distance(P_mu, Q_mu, P_sigma, Q_sigma)
-        same_cls_dist = torch.mean(dist)
+        same_cls_dist = torch.mean(dist).item()
         if is_deterministic_:
             batch_P_lat = encoder.sample_latent_vector(P_mu, None)
             batch_Q_lat = encoder.sample_latent_vector(Q_mu, None)
@@ -214,7 +224,7 @@ if __name__ == "__main__":
         Q_act = torch.reshape(Q_act, (-1, 1, action_dim_))
         
         policy_loss = policy.mdn_loss(out_P_pi, out_P_mu, out_P_sigma, P_act) + policy.mdn_loss(out_Q_pi, out_Q_mu, out_Q_sigma, Q_act)
-        test_policy_loss += policy_loss
+        test_policy_loss += policy_loss.item()
 
         latent_distance += dist.detach().cpu().tolist()
         
@@ -235,7 +245,7 @@ if __name__ == "__main__":
             dist = encoder.hellinger_distance(P_mu, Q_mu, None, None)
         else :
             dist = encoder.hellinger_distance(P_mu, Q_mu, P_sigma, Q_sigma)
-        diff_cls_dist = torch.mean(dist)
+        diff_cls_dist = torch.mean(dist).item()
 
         if is_deterministic_:
             batch_P_lat = encoder.sample_latent_vector(P_mu, None)
@@ -256,7 +266,7 @@ if __name__ == "__main__":
         Q_act = torch.reshape(Q_act, (-1, 1, action_dim_))
         
         policy_loss = policy.mdn_loss(out_P_pi, out_P_mu, out_P_sigma, P_act) + policy.mdn_loss(out_Q_pi, out_Q_mu, out_Q_sigma, Q_act)
-        test_policy_loss += policy_loss
+        test_policy_loss += policy_loss.item()
 
         latent_distance += dist.detach().cpu().tolist()
         

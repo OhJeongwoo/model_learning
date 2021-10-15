@@ -22,7 +22,7 @@ ONEOVERSQRT2PI = 1.0 / math.sqrt(2*math.pi)
 EPS = 1e-6
 
 class Encoder(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, learning_rate, is_deterministic):
+    def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, learning_rate, is_deterministic, n_samples):
         super(Encoder, self).__init__()
         self.is_deterministic = is_deterministic
         self.state_dim = state_dim
@@ -34,6 +34,11 @@ class Encoder(nn.Module):
         self.fc = nn.ModuleList([])
         self.fc.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
         self.lr = learning_rate
+        self.T = n_samples
+        if is_deterministic:
+            self.cos = nn.CosineSimilarity(dim = 1, eps = 1e-6)
+        else:
+            self.cos = nn.CosineSimilarity(dim = 2, eps = 1e-6)
         for i in range(1, self.H):
             self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
         self.z_mu = nn.Linear(self.hidden_layers[self.H - 1], latent_dim)
@@ -66,12 +71,21 @@ class Encoder(nn.Module):
         # return H^2(P,Q)
         # # mu1: N * D
         if not self.is_deterministic:
-            return torch.mean(1.0 - torch.sqrt(2.0 * sigma1 * sigma2 / (sigma1 * sigma1 + sigma2 * sigma2)) * torch.exp(-0.25 * (mu1 - mu2)* (mu1 - mu2) / (sigma1 * sigma1 + sigma2 * sigma2)), dim =1)
+            epsilon1 = torch.normal(0.0,1.0,size=(self.T, mu1.shape[0], mu1.shape[1]))
+            epsilon2 = torch.normal(0.0,1.0,size=(self.T, mu2.shape[0], mu2.shape[1]))
+            vec1 = mu1 + epsilon1 * sigma1
+            vec2 = mu2 + epsilon2 * sigma2
+            rt = self.cos(vec1, vec2)
+            return torch.mean(rt, dim = 0)
+
+            # return torch.mean(1.0 - torch.sqrt(2.0 * sigma1 * sigma2 / (sigma1 * sigma1 + sigma2 * sigma2)) * torch.exp(-0.25 * (mu1 - mu2)* (mu1 - mu2) / (sigma1 * sigma1 + sigma2 * sigma2)), dim =1)
             # return torch.norm(mu1 - mu2, dim = 1) + torch.norm(sigma1 - sigma2, dim =1)
-        return torch.norm(mu1 - mu2, dim = 1)
+        return self.cos(mu1, mu2)
+        # return torch.norm(mu1 - mu2, dim = 1)
         
     def regularization_loss(self, mu, sigma):
-        return 0.5 * torch.mean(torch.norm(sigma, dim = 1) ** 2 - torch.sum(torch.log(sigma), dim = 1)) - 0.5
+        if not self.is_deterministic:
+            return 0.5 * torch.mean(torch.norm(sigma, dim = 1) ** 2 - torch.sum(torch.log(sigma), dim = 1)) - 0.5
 
 class MDN(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, K, learning_rate):
