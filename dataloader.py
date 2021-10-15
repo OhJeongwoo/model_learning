@@ -20,6 +20,13 @@ class synthetic_example(data.Dataset):
             states = torch.FloatTensor(data[key]['states']).T
             actions = torch.FloatTensor(data[key]['actions']).T
             size = states.size()[0]
+            save_file = key.zfill(6) + ".json"
+            rt = {}
+            rt['state'] = states.tolist()
+            rt['action'] = actions.tolist()
+            rt['length'] = size
+            with open(save_file, 'w') as outfile:
+                json.dump(rt, outfile, indent=4)
             vel = [data[key]['vel']]*size
             self.vel.extend(vel)
             noise = [data[key]['noise']]*size
