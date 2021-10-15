@@ -19,19 +19,7 @@ class synthetic_example(data.Dataset):
         for key in data:
             states = torch.FloatTensor(data[key]['states']).T # [N * 2]
             actions = torch.FloatTensor(data[key]['actions']).T
-<<<<<<< HEAD
             new_states = states[:-num_traj-1]
-=======
-            size = states.size()[0]
-            save_file = key.zfill(6) + ".json"
-            rt = {}
-            rt['state'] = states.tolist()
-            rt['action'] = actions.tolist()
-            rt['length'] = size
-            with open(save_file, 'w') as outfile:
-                json.dump(rt, outfile, indent=4)
-            new_states = states[:-num_traj]
->>>>>>> a2124999d1123bb06650e4967147f33111d76560
             new_actions = actions[:-num_traj]
             for j in range(1,num_traj):
                 new_states = torch.cat((new_states,states[j:j-num_traj-1]),dim=1)
