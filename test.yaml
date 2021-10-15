@@ -1,0 +1,13 @@
+n_epoch: 1000
+batch_size: 128
+n_trj: 324
+
+state_dim: 2
+action_dim: 2
+latent_dim: 3
+encoder_hidden_layers: [5]
+mdn_hidden_layers: [5]
+encoder_learning_rate: 0.0001
+policy_learning_rate: 0.0001
+K: 10
+is_deterministic: False
