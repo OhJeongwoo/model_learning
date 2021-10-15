@@ -17,30 +17,32 @@ class synthetic_example(data.Dataset):
         self.type = []
         # Load Data
         for key in data:
+            print(key)
             states = torch.FloatTensor(data[key]['states']).T # [N * 2]
             actions = torch.FloatTensor(data[key]['actions']).T
             size = states.size()[0]
-            save_file = key.zfill(6) + ".json"
+            save_file = "data/" + key.zfill(6) + ".json"
             rt = {}
-            rt['state'] = states.tolist()
+            rt['state'] = states.tolist()[1:]
             rt['action'] = actions.tolist()
-            rt['length'] = size
+            print(len(rt['state']) - len(rt['action']))
+            rt['length'] = size - 1
             with open(save_file, 'w') as outfile:
                 json.dump(rt, outfile, indent=4)
-            new_states = states[:-num_traj]
-            new_actions = actions[:-num_traj]
-            for j in range(1,num_traj):
-                new_states = torch.cat((new_states,states[j:j-num_traj]),dim=1)
-                new_actions = torch.cat((new_actions,actions[j:j-num_traj]),dim=1)
-            size = new_states.size()[0]
-            vel = [data[key]['vel']]*size
-            self.vel.extend(vel)
-            noise = [data[key]['noise']]*size
-            self.noise.extend(noise)
-            type = [data[key]['type']]*size
-            self.type.extend(type)
-            self.x = torch.cat((self.x,new_states),dim=0)
-            self.y = torch.cat((self.y,new_actions),dim=0)
+            # new_states = states[:-num_traj]
+            # new_actions = actions[:-num_traj]
+            # for j in range(1,num_traj):
+            #     new_states = torch.cat((new_states,states[j:j-num_traj]),dim=1)
+            #     new_actions = torch.cat((new_actions,actions[j:j-num_traj]),dim=1)
+            # size = new_states.size()[0]
+            # vel = [data[key]['vel']]*size
+            # self.vel.extend(vel)
+            # noise = [data[key]['noise']]*size
+            # self.noise.extend(noise)
+            # type = [data[key]['type']]*size
+            # self.type.extend(type)
+            # self.x = torch.cat((self.x,new_states),dim=0)
+            # self.y = torch.cat((self.y,new_actions),dim=0)
         s = self.x.size()[0]
         self.noise = torch.FloatTensor(self.noise).unsqueeze(-1)
         self.vel = torch.FloatTensor(self.vel).unsqueeze(-1)
