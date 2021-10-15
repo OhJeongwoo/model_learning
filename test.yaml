@@ -1,13 +1,21 @@
+# data description
 n_epoch: 1000
 batch_size: 128
-n_trj: 324
+n_trj: 5
+is_sequence: True
+n_consecutive_frame: 5
 
+# model description
 state_dim: 2
 action_dim: 2
-latent_dim: 3
-encoder_hidden_layers: [5]
-mdn_hidden_layers: [5]
+latent_dim: 4
+encoder_hidden_layers: [10, 5]
+mdn_hidden_layers: [10, 5]
 encoder_learning_rate: 0.0001
 policy_learning_rate: 0.0001
-K: 10
+K: 4
 is_deterministic: False
+
+# evaluation description
+n_same_traj_samples: 100
+n_diff_traj_samples: 900

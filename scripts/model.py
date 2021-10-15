@@ -50,6 +50,7 @@ class Encoder(nn.Module):
         for i in range(0,self.H):
             x = F.relu(self.fc[i](x))
         mu = F.normalize(self.z_mu(x), dim = 1)
+        # mu = self.z_mu(x)
         if not self.is_deterministic:
             sigma = torch.exp(self.z_sigma(x))
             return mu, sigma
@@ -70,7 +71,7 @@ class Encoder(nn.Module):
         return torch.norm(mu1 - mu2, dim = 1)
         
     def regularization_loss(self, mu, sigma):
-        return torch.mean(0.5 * torch.norm(mu, dim = 1) ** 2 + torch.norm(sigma, dim = 1) ** 2 - torch.sum(torch.log(sigma), dim = 1)) - 0.5
+        return 0.5 * torch.mean(torch.norm(sigma, dim = 1) ** 2 - torch.sum(torch.log(sigma), dim = 1)) - 0.5
 
 class MDN(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, K, learning_rate):
