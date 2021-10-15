@@ -23,4 +23,4 @@ def transform(alpha,x,y):
 def get_action(x,y):
     dx = x[:-1]- x[1:]
     dy = y[:-1] - y[1:]
-    return dx.tolist()+[0],dy.tolist()+[0]
+    return dx.tolist(),dy.tolist()
