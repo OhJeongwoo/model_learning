@@ -10,8 +10,8 @@ class synthetic_example(data.Dataset):
         self.path = path
         with open(self.path,'r') as jf:
             data = json.load(jf)
-        self.x = torch.zeros(size=(0,int(2*num_traj)),dtype=torch.float64)
-        self.y = torch.zeros(size=(0,int(2*num_traj)),dtype=torch.float64)
+        self.x = torch.zeros(size=(0,int(4*num_traj-2)),dtype=torch.float64)
+        self.y = torch.zeros(size=(0,2),dtype=torch.float64)
         self.noise = []
         self.vel = []
         self.type = []
@@ -43,6 +43,22 @@ class synthetic_example(data.Dataset):
             # self.type.extend(type)
             # self.x = torch.cat((self.x,new_states),dim=0)
             # self.y = torch.cat((self.y,new_actions),dim=0)
+            new_states = states[:-num_traj-1]
+            # new_actions = actions[:-num_traj]
+            for j in range(1,num_traj):
+                new_states = torch.cat((new_states,states[j:j-num_traj-1]),dim=1)
+                new_states = torch.cat((new_states,actions[j-1:j-num_traj-1]),dim=1)
+            new_actions = actions[num_traj:]
+            size = new_states.size()[0]
+            vel = [data[key]['vel']]*size
+            self.vel.extend(vel)
+            noise = [data[key]['noise']]*size
+            self.noise.extend(noise)
+            type = [data[key]['type']]*size
+            self.type.extend(type)
+            self.x = torch.cat((self.x,new_states),dim=0)
+            self.y = torch.cat((self.y,new_actions),dim=0)
+        # print(self.x.size(),self.y.size())
         s = self.x.size()[0]
         self.noise = torch.FloatTensor(self.noise).unsqueeze(-1)
         self.vel = torch.FloatTensor(self.vel).unsqueeze(-1)
