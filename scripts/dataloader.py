@@ -4,15 +4,17 @@ import numpy as np
 
 
 class Dataloader:
-    def __init__(self, path, N, is_sequence, consecutive_frame):
+    def __init__(self, path, N, encoder_rollout, policy_rollout):
         self.trj_path = path
         self.n_trj = N
         self.n_data = 0
-        self.obs = []
+        self.encoder_obs = []
+        self.policy_obs = []
         self.act = []
         self.cls = []
-        self.is_seq = is_sequence
-        self.M = consecutive_frame
+        self.encoder_rollout = encoder_rollout
+        self.policy_rollout = policy_rollout
+        self.M = max(self.encoder_rollout, self.policy_rollout)
         self.traj_index = []
 
         self.load()
@@ -30,14 +32,20 @@ class Dataloader:
                 continue
             self.traj_index.append((self.n_data, self.n_data + n - self.M + 1))
             for k in range(0, n - self.M +1):
-                obs = []
-                for j in range(0,self.M - 1):
-                    obs += data['state'][k + j]
-                    obs += data['action'][k + j]
-                obs += data['state'][k + self.M - 1]
-                self.obs.append(obs)
+                encoder_obs = []
+                for j in range(self.M - self.encoder_rollout, self.M - 1):
+                    encoder_obs += data['state'][k + j]
+                    encoder_obs += data['action'][k + j]
+                encoder_obs += data['state'][k + self.M - 1]
+                self.encoder_obs.append(encoder_obs)
+                policy_obs = []
+                for j in range(self.M - self.policy_rollout, self.M - 1):
+                    policy_obs += data['state'][k + j]
+                    policy_obs += data['action'][k + j]
+                policy_obs += data['state'][k + self.M - 1]
+                self.policy_obs.append(policy_obs)
                 self.act.append(data['action'][k + self.M - 1])
-            self.cls += [seq for i in range(n - self.M + 1)]
+            self.cls += [seq for _ in range(n - self.M + 1)]
             self.n_data += n - self.M + 1
         
         self.n_cls = len(self.traj_index)
@@ -45,23 +53,28 @@ class Dataloader:
         self.test_cls = [i for i in range(int(self.n_cls * 0.8), self.n_cls)]
         self.dataset_boundary = int(self.n_cls * 0.8)
         self.n_data_boundary = self.traj_index[self.dataset_boundary][0]
-        self.obs = np.array(self.obs)
+        self.encoder_obs = np.array(self.encoder_obs)
+        self.policy_obs = np.array(self.policy_obs)
         self.act = np.array(self.act)
         self.cls = np.array(self.cls)
-        self.obs_mean = np.mean(self.obs, axis = 0)
-        self.obs_std = np.std(self.obs, axis = 0)
+        self.encoder_obs_mean = np.mean(self.encoder_obs, axis = 0)
+        self.encoder_obs_std = np.std(self.encoder_obs, axis = 0)
+        self.policy_obs_mean = np.mean(self.policy_obs, axis = 0)
+        self.policy_obs_std = np.std(self.policy_obs, axis = 0)
         self.act_mean = np.mean(self.act, axis = 0)
         self.act_std = np.std(self.act, axis = 0)
 
-        self.obs = (self.obs - self.obs_mean) / self.obs_std
+        self.encoder_obs = (self.encoder_obs - self.encoder_obs_mean) / self.encoder_obs_std
+        self.policy_obs = (self.policy_obs - self.policy_obs_mean) / self.policy_obs_std
         self.act = (self.act - self.act_mean) / self.act_std
 
         print("Finish Load!!!")
-        print("# of state: %d" %(self.obs.shape[0]))
-        print("# of action: %d" %(self.act.shape[0]))
-        print("state dim: %d" %(self.obs.shape[1]))
+        print("# of data: %d" %(self.n_data))
+        print("encoder state dim: %d" %(self.encoder_obs.shape[1]))
+        print("policy state dim: %d" %(self.policy_obs.shape[1]))
         print("action dim: %d" %(self.act.shape[1]))
-        self.state_dim = self.obs.shape[1]
+        self.encoder_state_dim = self.encoder_obs.shape[1]
+        self.policy_state_dim = self.policy_obs.shape[1]
         self.action_dim = self.act.shape[1]
 
         
@@ -71,7 +84,7 @@ class Dataloader:
         else :
             arr = np.arange(self.n_data_boundary, self.n_data)
         np.random.shuffle(arr)
-        return self.obs[arr[:size]], self.act[arr[:size]], self.cls[arr[:size]]
+        return self.encoder_obs[arr[:size]], self.policy_obs[arr[:size]], self.act[arr[:size]], self.cls[arr[:size]]
 
     
     def sample_same_traj(self, size):
@@ -85,7 +98,7 @@ class Dataloader:
             np.random.shuffle(arr)
             P_idx_list.append(arr[0])
             Q_idx_list.append(arr[1])
-        return self.obs[P_idx_list], self.act[P_idx_list], self.obs[Q_idx_list], self.act[Q_idx_list]
+        return self.encoder_obs[P_idx_list], self.policy_obs[P_idx_list], self.act[P_idx_list], self.encoder_obs[Q_idx_list], self.policy_obs[Q_idx_list], self.act[Q_idx_list]
 
 
     def sample_diff_traj(self, size):
@@ -100,5 +113,5 @@ class Dataloader:
             Q_idx = np.random.randint(self.traj_index[Q_cls][0], self.traj_index[Q_cls][1], size = 1)[0]
             P_idx_list.append(P_idx)
             Q_idx_list.append(Q_idx)
-        return self.obs[P_idx_list], self.act[P_idx_list], self.obs[Q_idx_list], self.act[Q_idx_list]
+        return self.encoder_obs[P_idx_list], self.policy_obs[P_idx_list], self.act[P_idx_list], self.encoder_obs[Q_idx_list], self.policy_obs[Q_idx_list], self.act[Q_idx_list]
 

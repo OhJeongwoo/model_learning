@@ -3,11 +3,11 @@ n_epoch: 1000
 batch_size: 128
 n_trj: 50
 is_sequence: True
-n_consecutive_frame: 5
+encoder_rollout: 5
+policy_rollout: 1
 
 # model description
-state_dim: 2
-action_dim: 2
+policy_type: 'MDN'
 latent_dim: 4
 encoder_hidden_layers: [10, 5]
 mdn_hidden_layers: [10, 5]
@@ -16,6 +16,8 @@ policy_learning_rate: 0.001
 K: 4
 is_deterministic: False
 n_samples: 100
+encoder_rollout: 10
+policy_rollout: 1
 
 # evaluation description
 n_same_traj_samples: 100

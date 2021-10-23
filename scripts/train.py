@@ -9,10 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from sklearn.utils import shuffle
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-
 import matplotlib.pyplot as plt
 
 import random
@@ -22,7 +18,6 @@ import os
 
 import json
 import yaml
-import rospkg
 
 from model import Encoder
 from model import MDN
@@ -47,8 +42,6 @@ if __name__ == "__main__":
     n_epoch_ = args['n_epoch']
     batch_size_ = args['batch_size']
     n_trj_ = args['n_trj']
-    state_dim_ = args['state_dim']
-    action_dim_ = args['action_dim']
     latent_dim_ = args['latent_dim']
     encoder_hidden_layers_ = args['encoder_hidden_layers']
     mdn_hidden_layers_ = args['mdn_hidden_layers']
@@ -57,19 +50,24 @@ if __name__ == "__main__":
     K_ = args['K']
     is_deterministic_ = args['is_deterministic']
     is_sequence_ = args['is_sequence']
-    n_consecutive_frame_ = args['n_consecutive_frame']
+    encoder_rollout_ = args['encoder_rollout']
+    policy_rollout_ = args['policy_rollout']
     n_same_traj_samples_ = args['n_same_traj_samples']
     n_diff_traj_samples_ = args['n_diff_traj_samples']
     n_samples_ = args['n_samples']
+    policy_type_ = args['policy_type']
 
-    dataset = Dataloader(data_path, n_trj_, is_sequence_, n_consecutive_frame_)
-    state_dim_ = dataset.state_dim
+    dataset = Dataloader(data_path, n_trj_, encoder_rollout_, policy_rollout_)
+    encoder_state_dim_ = dataset.encoder_state_dim
+    policy_state_dim_ = dataset.policy_state_dim
     action_dim_ = dataset.action_dim
     n_batches_ = int(dataset.n_data / batch_size_)
 
-    encoder = Encoder(state_dim = state_dim_, action_dim = action_dim_, hidden_layers = encoder_hidden_layers_, latent_dim = latent_dim_, learning_rate = encoder_learning_rate_, is_deterministic = is_deterministic_, n_samples = n_samples_)
-    policy = MDN(state_dim = state_dim_, action_dim = action_dim_, hidden_layers = mdn_hidden_layers_, latent_dim = latent_dim_, K = K_, learning_rate = policy_learning_rate_)
-    
+    encoder = Encoder(state_dim = encoder_state_dim_, action_dim = action_dim_, latent_dim = latent_dim_, hidden_layers = encoder_hidden_layers_, learning_rate = encoder_learning_rate_, is_deterministic = is_deterministic_, n_samples = n_samples_)
+    if policy_type_ == 'MDN':
+        policy = MDN(state_dim = policy_state_dim_, action_dim = action_dim_, hidden_layers = mdn_hidden_layers_, latent_dim = latent_dim_, K = K_, learning_rate = policy_learning_rate_)
+    if policy_type_ == 'MLP':
+        policy = MDN(state_dim = policy_state_dim_, action_dim = action_dim_, hidden_layers = mdn_hidden_layers_, latent_dim = latent_dim_, learning_rate = policy_learning_rate_)
 
     record_encoder_loss = 0.0
     record_distance_loss = 0.0
@@ -81,22 +79,25 @@ if __name__ == "__main__":
             encoder.optimizer.zero_grad()
             policy.optimizer.zero_grad()
             
-            P_obs, P_act, P_cls = dataset.shuffle(batch_size_, TRAIN) # shuffle 2N array, but 2*k, 2*k+1 index are not same
-            Q_obs, Q_act, Q_cls = dataset.shuffle(batch_size_, TRAIN) # shuffle 2N array, but 2*k, 2*k+1 index are not same
-            P_obs = torch.from_numpy(P_obs).type(torch.FloatTensor).to(device = device_)
+            P_enc, P_ply, P_act, P_cls = dataset.shuffle(batch_size_, TRAIN) # shuffle 2N array, but 2*k, 2*k+1 index are not same
+            Q_enc, Q_ply, Q_act, Q_cls = dataset.shuffle(batch_size_, TRAIN) # shuffle 2N array, but 2*k, 2*k+1 index are not same
+            
+            P_enc = torch.from_numpy(P_enc).type(torch.FloatTensor).to(device = device_)
+            P_ply = torch.from_numpy(P_ply).type(torch.FloatTensor).to(device = device_)
             P_act = torch.from_numpy(P_act).type(torch.FloatTensor).to(device = device_)
             P_cls = torch.from_numpy(P_cls).type(torch.IntTensor).to(device = device_)
-            Q_obs = torch.from_numpy(Q_obs).type(torch.FloatTensor).to(device = device_)
+            Q_enc = torch.from_numpy(Q_enc).type(torch.FloatTensor).to(device = device_)
+            Q_ply = torch.from_numpy(Q_ply).type(torch.FloatTensor).to(device = device_)
             Q_act = torch.from_numpy(Q_act).type(torch.FloatTensor).to(device = device_)
             Q_cls = torch.from_numpy(Q_cls).type(torch.IntTensor).to(device = device_)
             cls_dir = torch.FloatTensor(2.0 * (P_cls == Q_cls) - 1.0)
 
             if is_deterministic_:
-                P_mu = encoder(P_obs, P_act)
-                Q_mu = encoder(Q_obs, Q_act)
+                P_mu = encoder(P_enc, P_act)
+                Q_mu = encoder(Q_enc, Q_act)
             else:
-                P_mu, P_sigma = encoder(P_obs, P_act)
-                Q_mu, Q_sigma = encoder(Q_obs, Q_act)
+                P_mu, P_sigma = encoder(P_enc, P_act)
+                Q_mu, Q_sigma = encoder(Q_enc, Q_act)
             
             if is_deterministic_:
                 dist = encoder.hellinger_distance(P_mu, Q_mu, None, None)
@@ -118,12 +119,12 @@ if __name__ == "__main__":
                 batch_P_lat = encoder.sample_latent_vector(P_mu, P_sigma)
                 batch_Q_lat = encoder.sample_latent_vector(Q_mu, Q_sigma)
 
-            out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_obs)
+            out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_ply)
             out_P_pi = torch.reshape(out_P_pi, (-1, policy.K))
             out_P_mu = torch.reshape(out_P_mu, (-1, policy.K, action_dim_))
             out_P_sigma = torch.reshape(out_P_sigma, (-1, policy.K, action_dim_))
             P_act = torch.reshape(P_act, (-1, 1, action_dim_))
-            out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_obs)
+            out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_ply)
             out_Q_pi = torch.reshape(out_Q_pi, (-1, policy.K))
             out_Q_mu = torch.reshape(out_Q_mu, (-1, policy.K, action_dim_))
             out_Q_sigma = torch.reshape(out_Q_sigma, (-1, policy.K, action_dim_))
@@ -133,7 +134,7 @@ if __name__ == "__main__":
 
             policy_loss = policy.mdn_loss(out_P_pi, out_P_mu, out_P_sigma, P_act) + policy.mdn_loss(out_Q_pi, out_Q_mu, out_Q_sigma, Q_act)
             record_policy_loss = policy_loss.item()
-            encoder_loss = distance_loss
+            encoder_loss = -distance_loss
             if not is_deterministic_:
                 encoder_loss += regularizer_loss
             record_encoder_loss = encoder_loss.item()
@@ -188,17 +189,19 @@ if __name__ == "__main__":
         latent_distance = []
         test_policy_loss = 0.0
 
-        P_obs, P_act, Q_obs, Q_act = dataset.sample_same_traj(n_same_traj_samples_)
-        P_obs = torch.from_numpy(P_obs).type(torch.FloatTensor).to(device = device_)
+        P_enc, P_ply, P_act, Q_enc, Q_ply, Q_act = dataset.sample_same_traj(n_same_traj_samples_)
+        P_enc = torch.from_numpy(P_enc).type(torch.FloatTensor).to(device = device_)
+        P_ply = torch.from_numpy(P_ply).type(torch.FloatTensor).to(device = device_)
         P_act = torch.from_numpy(P_act).type(torch.FloatTensor).to(device = device_)
-        Q_obs = torch.from_numpy(Q_obs).type(torch.FloatTensor).to(device = device_)
+        Q_enc = torch.from_numpy(Q_enc).type(torch.FloatTensor).to(device = device_)
+        Q_ply = torch.from_numpy(Q_ply).type(torch.FloatTensor).to(device = device_)
         Q_act = torch.from_numpy(Q_act).type(torch.FloatTensor).to(device = device_)
         if is_deterministic_:
-            P_mu = encoder(P_obs, P_act)
-            Q_mu = encoder(Q_obs, Q_act)
+            P_mu = encoder(P_enc, P_act)
+            Q_mu = encoder(Q_enc, Q_act)
         else:
-            P_mu, P_sigma = encoder(P_obs, P_act)
-            Q_mu, Q_sigma = encoder(Q_obs, Q_act)
+            P_mu, P_sigma = encoder(P_enc, P_act)
+            Q_mu, Q_sigma = encoder(Q_enc, Q_act)
         
         if is_deterministic_:
             dist = encoder.hellinger_distance(P_mu, Q_mu, None, None)
@@ -212,12 +215,12 @@ if __name__ == "__main__":
             batch_P_lat = encoder.sample_latent_vector(P_mu, P_sigma)
             batch_Q_lat = encoder.sample_latent_vector(Q_mu, Q_sigma)
 
-        out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_obs)
+        out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_ply)
         out_P_pi = torch.reshape(out_P_pi, (-1, policy.K))
         out_P_mu = torch.reshape(out_P_mu, (-1, policy.K, action_dim_))
         out_P_sigma = torch.reshape(out_P_sigma, (-1, policy.K, action_dim_))
         P_act = torch.reshape(P_act, (-1, 1, action_dim_))
-        out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_obs)
+        out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_ply)
         out_Q_pi = torch.reshape(out_Q_pi, (-1, policy.K))
         out_Q_mu = torch.reshape(out_Q_mu, (-1, policy.K, action_dim_))
         out_Q_sigma = torch.reshape(out_Q_sigma, (-1, policy.K, action_dim_))
@@ -229,17 +232,19 @@ if __name__ == "__main__":
         latent_distance += dist.detach().cpu().tolist()
         
         
-        P_obs, P_act, Q_obs, Q_act = dataset.sample_diff_traj(n_diff_traj_samples_)
-        P_obs = torch.from_numpy(P_obs).type(torch.FloatTensor).to(device = device_)
+        P_enc, P_ply, P_act, Q_enc, Q_ply, Q_act = dataset.sample_diff_traj(n_diff_traj_samples_)
+        P_enc = torch.from_numpy(P_enc).type(torch.FloatTensor).to(device = device_)
+        P_ply = torch.from_numpy(P_ply).type(torch.FloatTensor).to(device = device_)
         P_act = torch.from_numpy(P_act).type(torch.FloatTensor).to(device = device_)
-        Q_obs = torch.from_numpy(Q_obs).type(torch.FloatTensor).to(device = device_)
+        Q_enc = torch.from_numpy(Q_enc).type(torch.FloatTensor).to(device = device_)
+        Q_ply = torch.from_numpy(Q_ply).type(torch.FloatTensor).to(device = device_)
         Q_act = torch.from_numpy(Q_act).type(torch.FloatTensor).to(device = device_)
         if is_deterministic_:
-            P_mu = encoder(P_obs, P_act)
-            Q_mu = encoder(Q_obs, Q_act)
+            P_mu = encoder(P_enc, P_act)
+            Q_mu = encoder(Q_enc, Q_act)
         else:
-            P_mu, P_sigma = encoder(P_obs, P_act)
-            Q_mu, Q_sigma = encoder(Q_obs, Q_act)
+            P_mu, P_sigma = encoder(P_enc, P_act)
+            Q_mu, Q_sigma = encoder(Q_enc, Q_act)
         
         if is_deterministic_:
             dist = encoder.hellinger_distance(P_mu, Q_mu, None, None)
@@ -254,12 +259,12 @@ if __name__ == "__main__":
             batch_P_lat = encoder.sample_latent_vector(P_mu, P_sigma)
             batch_Q_lat = encoder.sample_latent_vector(Q_mu, Q_sigma)
 
-        out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_obs)
+        out_P_pi, out_P_mu, out_P_sigma = policy(batch_P_lat, P_ply)
         out_P_pi = torch.reshape(out_P_pi, (-1, policy.K))
         out_P_mu = torch.reshape(out_P_mu, (-1, policy.K, action_dim_))
         out_P_sigma = torch.reshape(out_P_sigma, (-1, policy.K, action_dim_))
         P_act = torch.reshape(P_act, (-1, 1, action_dim_))
-        out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_obs)
+        out_Q_pi, out_Q_mu, out_Q_sigma = policy(batch_Q_lat, Q_ply)
         out_Q_pi = torch.reshape(out_Q_pi, (-1, policy.K))
         out_Q_mu = torch.reshape(out_Q_mu, (-1, policy.K, action_dim_))
         out_Q_sigma = torch.reshape(out_Q_sigma, (-1, policy.K, action_dim_))

@@ -16,19 +16,17 @@ import torch.optim.lr_scheduler as lr_scheduler
 
 from sklearn.utils import shuffle
 
-
-
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2*math.pi)
 EPS = 1e-6
 
 class Encoder(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, learning_rate, is_deterministic, n_samples):
+    def __init__(self, state_dim, action_dim, latent_dim, hidden_layers, learning_rate, is_deterministic, n_samples):
         super(Encoder, self).__init__()
         self.is_deterministic = is_deterministic
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.latent_dim = latent_dim
         self.input_dim = self.state_dim + self.action_dim
+        self.latent_dim = latent_dim
         self.hidden_layers = hidden_layers
         self.H = len(self.hidden_layers)
         self.fc = nn.ModuleList([])
@@ -107,7 +105,7 @@ class MDN(nn.Module):
         self.z_sigma = nn.Linear(self.hidden_layers[self.H - 1], self.K * self.action_dim)
         self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
 
-    def forward(self, state, z):
+    def forward(self, z, state):
         # concatenate state and action
         x = torch.cat((state, z), axis = 1)
 
@@ -141,4 +139,40 @@ class MDN(nn.Module):
         prob = torch.clamp(prob,min=1e-8) # Clamp if the prob is to small
         nll = -torch.log(prob)
         return torch.mean(nll)
+
+
+class MLP(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_layers, latent_dim, learning_rate):
+        super(MDN, self).__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.latent_dim = latent_dim
+        self.input_dim = self.state_dim + self.latent_dim
+        self.hidden_layers = hidden_layers
+        self.H = len(self.hidden_layers)
+        self.fc = nn.ModuleList([])
+        self.fc.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
+        self.lr = learning_rate
+        for i in range(1, self.H):
+            self.fc.append(nn.Linear(self.hidden_layers[i-1], self.hidden_layers[i]))
+        self.z = nn.Linear(self.hidden_layers[self.H - 1], self.action_dim)
+        self.optimizer = optim.Adam(self.parameters(), lr = self.lr)
+        self.loss = nn.MSELoss()
+
+    def forward(self, z, state):
+        # concatenate state and action
+        x = torch.cat((state, z), axis = 1)
+
+        # forward network and return
+        for i in range(0,self.H):
+            x = F.relu(self.fc[i](x))
+        z = self.z(x)
+        return z
+
+
+    def mlp_loss(self, z, action):
+        # z: N * A
+        # action: N * 1 * A
+        action = torch.squeeze(action, dim = 1) # action: N * A
+        return self.loss(z, action)
 
